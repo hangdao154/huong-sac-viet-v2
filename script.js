@@ -3,6 +3,8 @@
   const frame = document.getElementById("video-frame");
   const title = document.getElementById("video-modal-title");
   const closeBtn = modal.querySelector(".modal-close");
+  const cards = document.getElementById("program-cards");
+  const programStatus = document.getElementById("program-status");
 
   function openModal(src, name) {
     title.textContent = name || "Video tiết mục";
@@ -20,11 +22,116 @@
     document.body.classList.remove("modal-open");
   }
 
-  document.querySelectorAll(".btn.watch").forEach(function (btn) {
-    btn.addEventListener("click", function () {
-      openModal(btn.dataset.video, btn.dataset.title);
-    });
+  function getDriveFileId(videoUrl) {
+    const url = new URL(videoUrl);
+    const match = url.pathname.match(
+      /^\/file\/d\/([A-Za-z0-9_-]+)\/(?:preview|view)\/?$/,
+    );
+
+    if (url.hostname !== "drive.google.com" || !match) {
+      throw new Error("Link video không đúng định dạng Google Drive: " + videoUrl);
+    }
+
+    return match[1];
+  }
+
+  function createProgramCard(program) {
+    const fileId = getDriveFileId(program.videoUrl);
+    const card = document.createElement("article");
+    card.className = "card";
+
+    const thumb = document.createElement("div");
+    thumb.className = "thumb";
+
+    const image = document.createElement("img");
+    image.className = "thumb-image";
+    image.src =
+      "https://drive.google.com/thumbnail?id=" +
+      encodeURIComponent(fileId) +
+      "&sz=w800";
+    image.alt = "";
+    image.loading = "lazy";
+
+    const heading = document.createElement("h3");
+    heading.textContent = program.title;
+    thumb.append(image, heading);
+
+    const body = document.createElement("div");
+    body.className = "body";
+
+    const tag = document.createElement("span");
+    tag.className = "tag";
+    tag.textContent = program.tag;
+
+    const description = document.createElement("p");
+    description.textContent = program.description;
+
+    const watchButton = document.createElement("button");
+    watchButton.className = "btn watch";
+    watchButton.type = "button";
+    watchButton.dataset.video = program.videoUrl;
+    watchButton.dataset.title = program.title;
+    watchButton.textContent = "Xem ngay";
+
+    body.append(tag, description, watchButton);
+    card.append(thumb, body);
+    return card;
+  }
+
+  async function loadPrograms() {
+    try {
+      const response = await fetch("data/programs.json");
+      if (!response.ok) {
+        throw new Error(
+          "Không thể tải data/programs.json (HTTP " + response.status + ")",
+        );
+      }
+
+      const programs = await response.json();
+      if (!Array.isArray(programs)) {
+        throw new Error("Dữ liệu chương trình phải là một danh sách.");
+      }
+
+      const fragment = document.createDocumentFragment();
+      programs.forEach(function (program, index) {
+        if (
+          !program ||
+          typeof program.title !== "string" ||
+          !program.title.trim() ||
+          typeof program.tag !== "string" ||
+          !program.tag.trim() ||
+          typeof program.description !== "string" ||
+          !program.description.trim() ||
+          typeof program.videoUrl !== "string" ||
+          !program.videoUrl.trim()
+        ) {
+          throw new Error("Thông tin tiết mục thứ " + (index + 1) + " chưa hợp lệ.");
+        }
+
+        fragment.append(createProgramCard(program));
+      });
+
+      cards.replaceChildren(fragment);
+      programStatus.textContent = programs.length
+        ? ""
+        : "Chưa có chương trình biểu diễn.";
+      programStatus.hidden = programs.length > 0;
+    } catch (error) {
+      console.error("Lỗi tải danh sách chương trình:", error);
+      programStatus.textContent =
+        "Không thể tải danh sách chương trình. Vui lòng thử tải lại trang.";
+      programStatus.hidden = false;
+    }
+  }
+
+  cards.addEventListener("click", function (event) {
+    const button = event.target.closest(".btn.watch");
+    if (button && cards.contains(button)) {
+      openModal(button.dataset.video, button.dataset.title);
+    }
   });
+
+  loadPrograms();
 
   closeBtn.addEventListener("click", closeModal);
   modal.addEventListener("click", function (e) {
